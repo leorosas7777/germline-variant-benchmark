@@ -1,0 +1,9 @@
+data/
+results/
+work/
+.nextflow*
+.nf-test/
+*.bam
+*.bai
+*.vcf.gz
+ESTADO_PROYECTO.md
