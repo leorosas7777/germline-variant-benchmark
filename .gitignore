@@ -8,3 +8,4 @@ work/
 *.vcf.gz
 ESTADO_PROYECTO.md
 results_test/
+__pycache__/

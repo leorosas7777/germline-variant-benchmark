@@ -8,6 +8,9 @@ include { GATK_CREATESEQUENCEDICTIONARY } from './modules/local/gatk_createseque
 include { GATK_HAPLOTYPECALLER }          from './modules/local/gatk_haplotypecaller'
 include { DEEPVARIANT }                   from './modules/local/deepvariant'
 include { BCFTOOLS_NORM }                 from './modules/local/bcftools_norm'
+include { HAPPY }                         from './modules/local/happy'
+include { BENCHMARK_TABLE }               from './modules/local/benchmark_table'
+include { MULTIQC }                       from './modules/local/multiqc'
 
 workflow {
     reads_ch = channel.of([
@@ -36,4 +39,27 @@ workflow {
     vcf_ch = GATK_HAPLOTYPECALLER.out.vcf.map { meta, vcf, tbi -> [meta + [caller: 'gatk'], vcf, tbi] }
         .mix(DEEPVARIANT.out.vcf.map { meta, vcf, tbi -> [meta + [caller: 'deepvariant'], vcf, tbi] })
     BCFTOOLS_NORM(vcf_ch, fasta_ch, SAMTOOLS_FAIDX.out.fai)
+
+    // Benchmark each normalised VCF against the GIAB truth
+    def strat_tsv = file(params.stratifications_tsv, checkIfExists: true)
+    HAPPY(BCFTOOLS_NORM.out.vcf,
+          file(params.truth_vcf, checkIfExists: true),
+          file("${params.truth_vcf}.tbi", checkIfExists: true),
+          file(params.truth_bed, checkIfExists: true),
+          fasta_ch, SAMTOOLS_FAIDX.out.fai,
+          strat_tsv.parent, strat_tsv.name, regions)
+
+    // Per-stratum table with confidence intervals (both callers in one file)
+    ext_ch = HAPPY.out.extended
+        .map { meta, csv -> [meta.caller, csv] }
+        .toList()
+        .map { pairs -> [pairs.collect { p -> p[0] }, pairs.collect { p -> p[1] }] }
+    BENCHMARK_TABLE(ext_ch)
+
+    // One report with read QC, duplicates, benchmark summaries and the stratified table
+    qc_ch = FASTP.out.json
+        .mix(MARKDUPLICATES.out.metrics, HAPPY.out.summary.map { _meta, csv -> csv },
+             BENCHMARK_TABLE.out.mqc)
+        .collect()
+    MULTIQC(qc_ch, file("${projectDir}/assets/multiqc_config.yml", checkIfExists: true))
 }

@@ -1,0 +1,3 @@
+title: "germline-variant-benchmark"
+extra_fn_clean_exts:
+  - ".unsorted"
